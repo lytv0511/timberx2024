@@ -1,185 +1,131 @@
 package org.firstinspires.ftc.teamcode;
+
 import androidx.annotation.NonNull;
-import com.acmerobotics.dashboard.config.Config;
+
 import com.acmerobotics.dashboard.telemetry.TelemetryPacket;
 import com.acmerobotics.roadrunner.Action;
 import com.acmerobotics.roadrunner.Pose2d;
 import com.acmerobotics.roadrunner.SequentialAction;
 import com.acmerobotics.roadrunner.Vector2d;
 import com.acmerobotics.roadrunner.ftc.Actions;
+import com.acmerobotics.roadrunner.TrajectoryActionBuilder;
 import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
-import com.qualcomm.robotcore.hardware.DcMotorEx;
-import com.acmerobotics.roadrunner.TrajectoryActionBuilder;
-import org.firstinspires.ftc.teamcode.MecanumDrive;
 
-import com.qualcomm.robotcore.hardware.DcMotorSimple;
-import com.qualcomm.robotcore.hardware.HardwareMap;
-import com.qualcomm.robotcore.hardware.Servo;
-import com.qualcomm.robotcore.hardware.DcMotor;
-
-@Config
-@Autonomous(name = "BLUE_TEST_AUTO_PIXEL", group = "Autonomous")
-public class BasicAuto extends LinearOpMode {
-    public class Lift {
-        private DcMotorEx lift;
-
-        public Lift(HardwareMap hardwareMap) {
-            lift = hardwareMap.get(DcMotorEx.class, "liftMotor");
-            lift.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
-            lift.setDirection(DcMotorSimple.Direction.FORWARD);
-        }
-
-        public class LiftUp implements Action {
-            private boolean initialized = false;
-
-            @Override
-            public boolean run(@NonNull TelemetryPacket packet) {
-                if (!initialized) {
-                    lift.setPower(0.8);
-                    initialized = true;
-                }
-
-                double pos = lift.getCurrentPosition();
-                packet.put("liftPos", pos);
-                if (pos < 3000.0) {
-                    return true;
-                } else {
-                    lift.setPower(0);
-                    return false;
-                }
-            }
-        }
-        public Action liftUp() {
-            return new LiftUp();
-        }
-
-        public class LiftDown implements Action {
-            private boolean initialized = false;
-
-            @Override
-            public boolean run(@NonNull TelemetryPacket packet) {
-                if (!initialized) {
-                    lift.setPower(-0.8);
-                    initialized = true;
-                }
-
-                double pos = lift.getCurrentPosition();
-                packet.put("liftPos", pos);
-                if (pos > 100.0) {
-                    return true;
-                } else {
-                    lift.setPower(0);
-                    return false;
-                }
-            }
-        }
-        public Action liftDown(){
-            return new LiftDown();
-        }
-    }
-
-    public class Claw {
-        private Servo claw;
-
-        public Claw(HardwareMap hardwareMap) {
-            claw = hardwareMap.get(Servo.class, "claw");
-        }
-
-        public class CloseClaw implements Action {
-            @Override
-            public boolean run(@NonNull TelemetryPacket packet) {
-                claw.setPosition(0.55);
-                return false;
-            }
-        }
-        public Action closeClaw() {
-            return new CloseClaw();
-        }
-
-        public class OpenClaw implements Action {
-            @Override
-            public boolean run(@NonNull TelemetryPacket packet) {
-                claw.setPosition(1.0);
-                return false;
-            }
-        }
-        public Action openClaw() {
-            return new OpenClaw();
-        }
-    }
-
+@Autonomous(name = "ScoringRoutine", group = "Autonomous")
+public class ScoringRoutine extends LinearOpMode {
     @Override
     public void runOpMode() {
-        Pose2d initialPose = new Pose2d(11.8, 61.7, Math.toRadians(90));
+        // Initialize hardware and drive system
+        Pose2d initialPose = new Pose2d(0, 0, Math.toRadians(90));
         MecanumDrive drive = new MecanumDrive(hardwareMap, initialPose);
-        Claw claw = new Claw(hardwareMap);
-        Lift lift = new Lift(hardwareMap);
 
-        // vision here that outputs position
-        int visionOutputPosition = 1;
+        // Define sample block and basket positions
+        Vector2d samplePosition = new Vector2d(48, 48); // Sample block position
+        Vector2d basketPosition = new Vector2d(60, 60); // Basket position
 
-        TrajectoryActionBuilder tab1 = drive.actionBuilder(initialPose)
-                .lineToYSplineHeading(33, Math.toRadians(0))
-                .waitSeconds(2)
-                .setTangent(Math.toRadians(90))
-                .lineToY(48)
-                .setTangent(Math.toRadians(0))
-                .lineToX(32)
-                .strafeTo(new Vector2d(44.5, 30))
-                .turn(Math.toRadians(180))
-                .lineToX(47.5)
-                .waitSeconds(3);
-        TrajectoryActionBuilder tab2 = drive.actionBuilder(initialPose)
-                .lineToY(37)
-                .setTangent(Math.toRadians(0))
-                .lineToX(18)
-                .waitSeconds(3)
-                .setTangent(Math.toRadians(0))
-                .lineToXSplineHeading(46, Math.toRadians(180))
-                .waitSeconds(3);
-        TrajectoryActionBuilder tab3 = drive.actionBuilder(initialPose)
-                .lineToYSplineHeading(33, Math.toRadians(180))
-                .waitSeconds(2)
-                .strafeTo(new Vector2d(46, 30))
-                .waitSeconds(3);
-        Action trajectoryActionCloseOut = tab1.endTrajectory().fresh()
-                .strafeTo(new Vector2d(48, 12))
-                .build();
+        // Trajectories for navigation
+        TrajectoryActionBuilder grabSampleTrajectory = drive.actionBuilder(initialPose)
+                .splineTo(samplePosition, Math.toRadians(0)) // Navigate to the block
+                .endTrajectory();
 
-        // actions that need to happen on init; for instance, a claw tightening.
-        Actions.runBlocking(claw.closeClaw());
+        TrajectoryActionBuilder deliverToBasketTrajectory = drive.actionBuilder(new Pose2d(samplePosition, Math.toRadians(90)))
+                .splineTo(basketPosition, Math.toRadians(90)) // Navigate to the basket
+                .endTrajectory();
 
-
-        while (!isStopRequested() && !opModeIsActive()) {
-            int position = visionOutputPosition;
-            telemetry.addData("Position during Init", position);
-            telemetry.update();
-        }
-
-        int startPosition = visionOutputPosition;
-        telemetry.addData("Starting Position", startPosition);
-        telemetry.update();
         waitForStart();
 
         if (isStopRequested()) return;
 
-        Action trajectoryActionChosen;
-        if (startPosition == 1) {
-            trajectoryActionChosen = tab1.build();
-        } else if (startPosition == 2) {
-            trajectoryActionChosen = tab2.build();
-        } else {
-            trajectoryActionChosen = tab3.build();
-        }
-
+        // Action sequence for scoring
         Actions.runBlocking(
                 new SequentialAction(
-                        trajectoryActionChosen,
-                        lift.liftUp(),
-                        claw.openClaw(),
-                        lift.liftDown(),
-                        trajectoryActionCloseOut
+                        // Navigate to sample
+                        grabSampleTrajectory.build(),
+
+                        // Lower grabber to grab the block
+                        new Action() {
+                            @Override
+                            public boolean run(@NonNull TelemetryPacket packet) {
+                                drive.grabberMove(0); // Move grabber to grabbing position
+                                return false;
+                            }
+                        },
+
+                        // Activate intake servo to suck in the block
+                        new Action() {
+                            private long startTime = -1;
+
+                            @Override
+                            public boolean run(@NonNull TelemetryPacket packet) {
+                                if (startTime == -1) {
+                                    startTime = System.currentTimeMillis();
+                                    drive.intakeMove(1.0); // Start intake
+                                }
+                                if (System.currentTimeMillis() - startTime > 2000) { // Stop after 2 seconds
+                                    drive.intakeMove(0);
+                                    return false;
+                                }
+                                return true;
+                            }
+                        },
+
+                        // Raise grabber to transport position
+                        new Action() {
+                            @Override
+                            public boolean run(@NonNull TelemetryPacket packet) {
+                                drive.grabberMove(500); // Raise grabber
+                                return false;
+                            }
+                        },
+
+                        // Navigate to the basket
+                        deliverToBasketTrajectory.build(),
+
+                        // Lift the linear slides
+                        new Action() {
+                            @Override
+                            public boolean run(@NonNull TelemetryPacket packet) {
+                                drive.linearMove(0.8); // Lift the slides
+                                try {
+                                    Thread.sleep(1500); // Wait for the slides to fully extend
+                                } catch (InterruptedException e) {
+                                    e.printStackTrace();
+                                }
+                                drive.linearMove(0); // Stop slides
+                                return false;
+                            }
+                        },
+
+                        // Tilt tray servo to deposit the block
+                        new Action() {
+                            @Override
+                            public boolean run(@NonNull TelemetryPacket packet) {
+                                drive.intakeMove(1.0); // Adjust tray servo to pour
+                                try {
+                                    Thread.sleep(500); // Allow servo time to pour
+                                } catch (InterruptedException e) {
+                                    e.printStackTrace();
+                                }
+                                drive.intakeMove(0);
+                                return false;
+                            }
+                        },
+
+                        // Lower the linear slides
+                        new Action() {
+                            @Override
+                            public boolean run(@NonNull TelemetryPacket packet) {
+                                drive.linearMove(-0.8); // Lower slides
+                                try {
+                                    Thread.sleep(1500); // Wait for the slides to fully retract
+                                } catch (InterruptedException e) {
+                                    e.printStackTrace();
+                                }
+                                drive.linearMove(0); // Stop slides
+                                return false;
+                            }
+                        }
                 )
         );
     }
